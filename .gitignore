@@ -1,0 +1,19 @@
+# Build and binary folders
+build/
+bin/
+out/
+.vs/
+*.exe
+*.dll
+*.lib
+
+# VS Code settings (optional, but good to ignore personal paths)
+.vscode/
+
+# OS Specific
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.swp
+*.tmp
