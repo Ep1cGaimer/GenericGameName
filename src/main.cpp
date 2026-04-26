@@ -8,9 +8,14 @@
 #include "MazeRenderer.h"
 #include "Collision.h"
 #include "PostProcessor.h"
+#include "AssetManager.h"
+#include "Overlay.h"
+#include <windows.h>
+#include <string>
 
 // ----- Globals -----
 GameManager game;
+int bgmLengthMs = 0;
 
 // Camera
 glm::vec3 cameraPos   = glm::vec3(1.5f, 1.2f, 1.5f);
@@ -116,6 +121,18 @@ int main() {
 
     glEnable(GL_DEPTH_TEST);
 
+    // ---- Audio ----
+    // Use the native Windows MCI API to play mp3 seamlessly without heavy dependencies
+    mciSendStringA("open \"../assets/game_audio.mp3\" type mpegvideo alias bgm", NULL, 0, NULL);
+    mciSendStringA("setaudio bgm volume to 250", NULL, 0, NULL); // lower volume (0-1000)
+    
+    // Fetch duration for gapless looping
+    char lengthBuf[256];
+    mciSendStringA("status bgm length", lengthBuf, 256, NULL);
+    bgmLengthMs = std::atoi(lengthBuf);
+    
+    mciSendStringA("play bgm", NULL, 0, NULL); // Don't use repeat, we manually loop it
+
     // ---- Generate Maze ----
     MazeGenerator maze(21, 21);
     maze.generate();
@@ -126,6 +143,14 @@ int main() {
     // ---- Build Renderer (shader is created here, after GL context) ----
     MazeRenderer renderer;
     renderer.buildMesh(maze);
+
+    // ---- Setup Assets ----
+    AssetManager::getInstance().populateFromMaze(maze);
+    
+    // ---- Scene Overlays ----
+    Overlay screenOverlay;
+    GLuint winTex = AssetManager::getInstance().getTexture("win", "../assets/win_screen.png");
+    GLuint loseTex = AssetManager::getInstance().getTexture("lose", "../assets/lose_screen.png");
 
     // ---- Collision ----
     MazeCollision collision(maze, 1.0f, 0.2f);
@@ -144,11 +169,24 @@ int main() {
 
     // ---- Game Loop ----
     float lastFrame = 0.0f;
+    float audioCheckTimer = 0.0f;
 
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = static_cast<float>(glfwGetTime());
         float deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+        // Gapless audio looper (resets 50ms before mp3 padding end)
+        audioCheckTimer += deltaTime;
+        if (audioCheckTimer > 0.1f) {
+            audioCheckTimer = 0.0f;
+            char posBuf[256];
+            mciSendStringA("status bgm position", posBuf, 256, NULL);
+            if (std::atoi(posBuf) >= bgmLengthMs - 50) {
+                mciSendStringA("seek bgm to 0", NULL, 0, NULL);
+                mciSendStringA("play bgm", NULL, 0, NULL);
+            }
+        }
 
         // Cap delta to avoid physics explosions on lag spikes
         if (deltaTime > 0.1f) deltaTime = 0.1f;
@@ -184,9 +222,20 @@ int main() {
                     // Render scene to FBO
                     postFX.beginSceneRender();
                     renderer.render(view, projection, cameraPos);
+                    AssetManager::getInstance().renderDecals(view, projection);
+                    AssetManager::getInstance().renderProps(view, projection, cameraPos);
+                    AssetManager::getInstance().updateAndRenderParticles(deltaTime, view, projection);
                     postFX.endSceneRender();
                     break;
                 case GameState::LOSE:
+                    postFX.beginSceneRender();
+                    screenOverlay.render(loseTex);
+                    postFX.endSceneRender();
+                    break;
+                case GameState::WIN:
+                    postFX.beginSceneRender();
+                    screenOverlay.render(winTex);
+                    postFX.endSceneRender();
                     break;
             }
         }

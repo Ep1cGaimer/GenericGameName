@@ -4,7 +4,8 @@
 enum class GameState {
     MENU,
     PLAYING,
-    LOSE
+    LOSE,
+    WIN
 };
 
 class GameManager {

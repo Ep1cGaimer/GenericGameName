@@ -28,7 +28,7 @@ private:
     void initShader();
     unsigned int compileShader(unsigned int type, const char* source);
     unsigned int createShaderProgram(const char* vertexSource, const char* fragmentSource);
-    void addQuad(std::vector<float>& vertices, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4, glm::vec3 normal);
+    void addQuad(std::vector<float>& vertices, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4, glm::vec3 normal, float tilingU = 1.0f, float tilingV = 1.0f);
 };
 
 #endif

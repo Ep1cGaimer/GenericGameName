@@ -81,87 +81,14 @@ float sobelEdge(vec2 uv) {
 }
 
 void main() {
-    // ---- Step 0: Boiling UV wobble (stepped time) ----
-    float steppedTime = floor(uTime * uBoilFPS);
-    vec2 noiseInput = gl_FragCoord.xy * 0.05 + steppedTime * 7.13;
-    vec2 boilOffset = vec2(
-        hash21(noiseInput) - 0.5,
-        hash21(noiseInput + vec2(37.0, 91.0)) - 0.5
-    ) * 0.0018;
-
-    vec2 uv = TexCoords + boilOffset;
-
-    // ---- Step 1: Sample scene ----
-    vec3 scene = texture(sceneColor, uv).rgb;
-
-    // ---- Step 2: Edge detection ----
-    float edge = sobelEdge(uv);
-    // Linearize the edge response — depth is non-linear
-    float edgeMask = smoothstep(0.001, 0.004, edge);
-
-    // Also add a second edge pass with wider kernel for thicker outlines
-    float edgeWide = sobelEdge(uv * 0.999);
-    edgeMask = max(edgeMask, smoothstep(0.0008, 0.003, edgeWide) * 0.6);
-
-    // ---- Step 3: Cross-hatching based on luminance ----
-    float lum = dot(scene, vec3(0.2126, 0.7152, 0.0722));
-
-    // Hatching coordinates with slight boil
-    vec2 hatchUV = (gl_FragCoord.xy + boilOffset * 400.0) / 6.0;
-
-    float hatch = 1.0;
-
-    // Layer 1: light diagonal strokes (45°)
-    if (lum < 0.85) {
-        float line1 = abs(fract(hatchUV.x + hatchUV.y) - 0.5) * 2.0;
-        hatch = min(hatch, smoothstep(0.0, 0.35, line1) * 0.85 + 0.15);
-    }
-
-    // Layer 2: cross-hatch (135°)
-    if (lum < 0.55) {
-        float line2 = abs(fract(hatchUV.x - hatchUV.y) - 0.5) * 2.0;
-        float h2 = smoothstep(0.0, 0.3, line2) * 0.7 + 0.3;
-        hatch = min(hatch, h2);
-    }
-
-    // Layer 3: vertical strokes
-    if (lum < 0.3) {
-        float line3 = abs(fract(hatchUV.x * 0.7) - 0.5) * 2.0;
-        float h3 = smoothstep(0.0, 0.25, line3) * 0.5 + 0.15;
-        hatch = min(hatch, h3);
-    }
-
-    // Layer 4: near-total fill
-    if (lum < 0.1) {
-        hatch = 0.08;
-    }
-
-    // Blend between original scene colors and hatching
-    // Use scene color tinted toward warm paper for hatched areas
-    vec3 warmTint = vec3(0.92, 0.87, 0.78);
-    vec3 hatched = warmTint * hatch;
-
-    // Mix: bright areas keep some scene color, dark areas go full hatch
-    float hatchBlend = smoothstep(0.0, 0.8, 1.0 - lum);
-    vec3 result = mix(scene * 0.9 + warmTint * 0.1, hatched, hatchBlend * 0.7);
-
-    // ---- Step 4: Apply edge outlines ----
-    // Edges drawn in dark pencil color with slight variation
-    vec3 pencilColor = vec3(0.08, 0.06, 0.05);
-    result = mix(result, pencilColor, edgeMask * 0.9);
-
-    // ---- Step 5: Paper texture overlay ----
-    vec2 paperUV = gl_FragCoord.xy / 200.0;
-    // Add steppedTime so paper grain subtly shifts with boil
-    float paper = paperNoise(paperUV + steppedTime * 0.01);
-    paper = 0.7 + paper * 0.3; // remap to 0.7–1.0 range
-    result *= paper;
+    // ---- Step 1: Sample scene without boil wobble ----
+    vec3 scene = texture(sceneColor, TexCoords).rgb;
 
     // ---- Step 6: Slight vignette for extra unease ----
     vec2 vigUV = TexCoords * 2.0 - 1.0;
     float vig = 1.0 - dot(vigUV * 0.5, vigUV * 0.5);
     vig = clamp(vig, 0.0, 1.0);
-    result *= vig;
+    vec3 result = scene * vig;
 
     FragColor = vec4(result, 1.0);
 }
