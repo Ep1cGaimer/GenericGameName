@@ -2,6 +2,9 @@
 #include <glad/gl.h>
 #include <iostream>
 #include <cmath>
+#include "AssetManager.h"
+#include <iostream>
+#include <cmath>
 
 // Each maze cell becomes a 3x3 tile block:
 //   walls = solid tiles, passages = open tiles
@@ -15,9 +18,11 @@ static const char* vertexShaderSource = R"glsl(
 #version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
+layout (location = 2) in vec2 aTexCoords;
 
 out vec3 FragPos;
 out vec3 Normal;
+out vec2 TexCoords;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -26,6 +31,7 @@ uniform mat4 projection;
 void main() {
     FragPos = vec3(model * vec4(aPos, 1.0));
     Normal = aNormal;
+    TexCoords = aTexCoords;
     gl_Position = projection * view * vec4(FragPos, 1.0);
 }
 )glsl";
@@ -36,12 +42,13 @@ out vec4 FragColor;
 
 in vec3 FragPos;
 in vec3 Normal;
+in vec2 TexCoords;
 
 uniform vec3 viewPos;
 uniform vec3 lightColor;
-uniform vec3 objectColor;
 uniform float fogNear;
 uniform float fogFar;
+uniform sampler2D diffMap;
 
 void main() {
     // Overhead fluorescent light that follows the player
@@ -61,7 +68,8 @@ void main() {
     float dist_to_light = length(lightPos - FragPos);
     float attenuation = 1.0 / (1.0 + 0.07 * dist_to_light + 0.017 * dist_to_light * dist_to_light);
 
-    vec3 result = (ambient + diffuse * attenuation) * objectColor;
+    vec4 texColor = texture(diffMap, TexCoords);
+    vec3 result = (ambient + diffuse * attenuation) * texColor.rgb;
 
     // Fog — relative to camera position
     float dist = length(FragPos - viewPos);
@@ -205,11 +213,13 @@ void MazeRenderer::buildMesh(const MazeGenerator& maze) {
     glBindVertexArray(wallVAO);
     glBindBuffer(GL_ARRAY_BUFFER, wallVBO);
     glBufferData(GL_ARRAY_BUFFER, wallVerts.size() * sizeof(float), wallVerts.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    wallVertexCount = wallVerts.size() / 6;
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    wallVertexCount = wallVerts.size() / 8;
 
     // Upload Floor
     glGenVertexArrays(1, &floorVAO);
@@ -217,11 +227,13 @@ void MazeRenderer::buildMesh(const MazeGenerator& maze) {
     glBindVertexArray(floorVAO);
     glBindBuffer(GL_ARRAY_BUFFER, floorVBO);
     glBufferData(GL_ARRAY_BUFFER, floorVerts.size() * sizeof(float), floorVerts.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    floorVertexCount = floorVerts.size() / 6;
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    floorVertexCount = floorVerts.size() / 8;
 
     // Upload Ceiling
     glGenVertexArrays(1, &ceilingVAO);
@@ -229,11 +241,13 @@ void MazeRenderer::buildMesh(const MazeGenerator& maze) {
     glBindVertexArray(ceilingVAO);
     glBindBuffer(GL_ARRAY_BUFFER, ceilingVBO);
     glBufferData(GL_ARRAY_BUFFER, ceilingVerts.size() * sizeof(float), ceilingVerts.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    ceilingVertexCount = ceilingVerts.size() / 6;
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    ceilingVertexCount = ceilingVerts.size() / 8;
 
     glBindVertexArray(0);
 
@@ -256,22 +270,29 @@ void MazeRenderer::render(const glm::mat4& view, const glm::mat4& projection, co
     glUniform3f(glGetUniformLocation(shaderProgram, "viewPos"), cameraPos.x, cameraPos.y, cameraPos.z);
     glUniform3f(glGetUniformLocation(shaderProgram, "lightColor"), 1.0f, 0.95f, 0.75f);
 
-    // Fog
-    glUniform1f(glGetUniformLocation(shaderProgram, "fogNear"), 4.0f);
-    glUniform1f(glGetUniformLocation(shaderProgram, "fogFar"), 16.0f);
+    // Fog (pushed back to make scene more visible)
+    glUniform1f(glGetUniformLocation(shaderProgram, "fogNear"), 8.0f);
+    glUniform1f(glGetUniformLocation(shaderProgram, "fogFar"), 30.0f);
 
-    // Walls (Sickly Yellowish Wallpaper)
-    glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.78f, 0.72f, 0.52f);
+    // Get Textures (retro Filter = true)
+    GLuint wallTex = AssetManager::getInstance().getTexture("wall", "../assets/wall/weathered_planks_diff_4k.jpg", true);
+    GLuint floorTex = AssetManager::getInstance().getTexture("floor", "../assets/floor/old_wood_floor_diff_4k.jpg", true);
+
+    glActiveTexture(GL_TEXTURE0);
+    glUniform1i(glGetUniformLocation(shaderProgram, "diffMap"), 0);
+
+    // Walls
+    glBindTexture(GL_TEXTURE_2D, wallTex);
     glBindVertexArray(wallVAO);
     glDrawArrays(GL_TRIANGLES, 0, wallVertexCount);
 
-    // Floor (Dirty Brownish-Yellow Carpet)
-    glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.45f, 0.38f, 0.25f);
+    // Floor
+    glBindTexture(GL_TEXTURE_2D, floorTex);
     glBindVertexArray(floorVAO);
     glDrawArrays(GL_TRIANGLES, 0, floorVertexCount);
 
-    // Ceiling (Stained Off-White Panels)
-    glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.72f, 0.70f, 0.62f);
+    // Ceiling (let's just reuse floor texturing)
+    glBindTexture(GL_TEXTURE_2D, floorTex);
     glBindVertexArray(ceilingVAO);
     glDrawArrays(GL_TRIANGLES, 0, ceilingVertexCount);
 
@@ -287,22 +308,32 @@ void MazeRenderer::cleanup() {
     if (ceilingVBO) { glDeleteBuffers(1, &ceilingVBO); ceilingVBO = 0; }
 }
 
-void MazeRenderer::addQuad(std::vector<float>& vertices, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4, glm::vec3 normal) {
+void MazeRenderer::addQuad(std::vector<float>& vertices, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4, glm::vec3 normal, float tilingU, float tilingV) {
     // Triangle 1: p1 p2 p3
     vertices.push_back(p1.x); vertices.push_back(p1.y); vertices.push_back(p1.z);
     vertices.push_back(normal.x); vertices.push_back(normal.y); vertices.push_back(normal.z);
+    vertices.push_back(0.0f); vertices.push_back(0.0f);
+
     vertices.push_back(p2.x); vertices.push_back(p2.y); vertices.push_back(p2.z);
     vertices.push_back(normal.x); vertices.push_back(normal.y); vertices.push_back(normal.z);
+    vertices.push_back(tilingU); vertices.push_back(0.0f);
+
     vertices.push_back(p3.x); vertices.push_back(p3.y); vertices.push_back(p3.z);
     vertices.push_back(normal.x); vertices.push_back(normal.y); vertices.push_back(normal.z);
+    vertices.push_back(tilingU); vertices.push_back(tilingV);
 
     // Triangle 2: p1 p3 p4
     vertices.push_back(p1.x); vertices.push_back(p1.y); vertices.push_back(p1.z);
     vertices.push_back(normal.x); vertices.push_back(normal.y); vertices.push_back(normal.z);
+    vertices.push_back(0.0f); vertices.push_back(0.0f);
+
     vertices.push_back(p3.x); vertices.push_back(p3.y); vertices.push_back(p3.z);
     vertices.push_back(normal.x); vertices.push_back(normal.y); vertices.push_back(normal.z);
+    vertices.push_back(tilingU); vertices.push_back(tilingV);
+
     vertices.push_back(p4.x); vertices.push_back(p4.y); vertices.push_back(p4.z);
     vertices.push_back(normal.x); vertices.push_back(normal.y); vertices.push_back(normal.z);
+    vertices.push_back(0.0f); vertices.push_back(tilingV);
 }
 
 unsigned int MazeRenderer::compileShader(unsigned int type, const char* source) {
