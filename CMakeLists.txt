@@ -29,10 +29,14 @@ FetchContent_MakeAvailable(glm)
 add_executable(HorrorGame 
     src/main.cpp 
     src/gl.c
+    src/Maze.cpp
+    src/MazeRenderer.cpp
+    src/Collision.cpp
+    src/PostProcessor.cpp
 )
 
 # Include directories
-target_include_directories(HorrorGame PRIVATE include)
+target_include_directories(HorrorGame PRIVATE include src)
 
 # Link GLFW and GLM to our game
 target_link_libraries(HorrorGame PRIVATE glfw glm)
